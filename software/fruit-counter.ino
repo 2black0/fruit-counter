@@ -160,7 +160,7 @@ void loop() {
         Serial.println("Weight <= 200 gram");
         Serial.println("S Fruit:" + String(smallCounter));
         led_off();
-      } else if (weight >= 8538676) {
+      } else if (weightValue >= 8538676) {
         bigCounter++;
         led_on();
         servo2_off();
@@ -175,7 +175,7 @@ void loop() {
   lcd_show(0, 1, "S:" + String(smallCounter) + " B:" + String(bigCounter), 100);
 }
 
-void red_color() {
+int red_color() {
   digitalWrite(s1Pin, LOW);
   digitalWrite(s2Pin, LOW);
   int red = pulseIn(soutPin, LOW);
@@ -183,7 +183,7 @@ void red_color() {
   return red;
 }
 
-void green_color() {
+int green_color() {
   digitalWrite(s2Pin, HIGH);
   digitalWrite(s3Pin, HIGH);
   int green = pulseIn(soutPin, LOW);
@@ -191,7 +191,7 @@ void green_color() {
   return green;
 }
 
-void blue_color() {
+int blue_color() {
   digitalWrite(s2Pin, LOW);
   digitalWrite(s3Pin, HIGH);
   int blue = pulseIn(soutPin, LOW);
