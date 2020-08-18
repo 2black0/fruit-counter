@@ -1,12 +1,12 @@
-#include <HX711.h>
+#include <HX711_ADC.h>
 #include <LiquidCrystal_I2C.h>
 #include <Servo.h>
-#include <ezButton.h>
 
+const int sckPin = A0;
+const int doutPin = A1;
 const int convPin = A2;
-const int btnPin = A3;
-const int trigPin = 2;
-const int echoPin = 3;
+const int S1trigPin = 2;
+const int S1echoPin = 3;
 const int s0Pin = 4;
 const int s1Pin = 5;
 const int s2Pin = 6;
@@ -14,8 +14,8 @@ const int s3Pin = 7;
 const int soutPin = 8;
 const int servo1Pin = 9;
 const int servo2Pin = 10;
-const int sckPin = 11;
-const int doutPin = 12;
+const int S2trigPin = 11;
+const int S2echoPin = 12;
 const int ledPin = 13;
 
 // --------------------------------------------
@@ -26,48 +26,65 @@ int greentopSP = 0; // ganti dengan nilai hujau maksimal kematangan buah
 int greenbotSP = 0; // ganti dengan nilai hijau minimal kematangan buah
 int bluetopSP = 0;  // ganti dengan nilai biru maksimal kematangan buah
 int bluebotSP = 0;  // ganti dengan nilai biru minimal kematangan buah
-float calibration_factor = 344.10; // ganti dengan nilai kalibrasi
+float calibrationValue = 1.0; // ganti dengan new calibration value
 // --------------------------------------------
 
 int weightValue = 0;
-int distanceValue = 0;
+int distance1Value = 0;
+int distance2Value = 0;
 int redValue = 0;
 int greenValue = 0;
 int blueValue = 0;
 
-int totalcounter = 0;
-int ripecounter = 0;
-int smallcounter = 0;
-int bigcounter = 0;
+int totalCounter = 0;
+int ripeCounter = 0;
+int smallCounter = 0;
+int bigCounter = 0;
 
-bool startStatus = false;
-bool resetStatus = false;
-bool onStatus = false;
-bool colorStatus = false;
 bool weightStatus = false;
 
+static boolean newDataReady = 0;
+const int serialPrintInterval = 0;
+long t;
+
 LiquidCrystal_I2C lcd(0x27, 16, 2);
-HX711 scale(doutPin, sckPin);
-ezButton button(btnPin);
+HX711_ADC LoadCell(doutPin, sckPin);
 Servo servo1;
 Servo servo2;
 
+void init_hx711() {
+  LoadCell.begin();
+  long stabilizingtime = 2000;
+  boolean _tare = false;
+  LoadCell.start(stabilizingtime, _tare);
+  if (LoadCell.getTareTimeoutFlag() || LoadCell.getSignalTimeoutFlag()) {
+    Serial.println("Check LoadCell");
+    lcd_show(1, 0, "Check LoadCell", 500);
+    while (1)
+      ;
+  } else {
+    LoadCell.setCalFactor(calibrationValue);
+    Serial.println("LoadCell OK");
+    lcd_show(1, 0, "LoadCell OK", 500);
+  }
+}
+
 void init_device() {
   Serial.begin(9600);
-  lcd.init();
-  button.setDebounceTime(50);
-  scale.set_scale();
-  scale.tare();
+  lcd.begin();
+  lcd.backlight();
   servo1.attach(servo1Pin, 600, 2300);
   servo2.attach(servo2Pin, 600, 2300);
+  init_hx711();
   delay(50);
 }
 
 void init_pin() {
   pinMode(convPin, OUTPUT);
-  pinMode(btnPin, INPUT);
-  pinMode(trigPin, OUTPUT);
-  pinMode(echoPin, INPUT);
+  pinMode(S1trigPin, OUTPUT);
+  pinMode(S1echoPin, INPUT);
+  pinMode(S2trigPin, OUTPUT);
+  pinMode(S2echoPin, INPUT);
   pinMode(ledPin, OUTPUT);
   pinMode(s0Pin, OUTPUT);
   pinMode(s1Pin, OUTPUT);
@@ -91,131 +108,107 @@ void setup() {
   init_device();
   init_pin();
   init_servo();
-  lcd_show(1, 0, "Fish Counter", 1);
+  Serial.println("Fruit Counter by 2black0");
+  lcd_show(1, 0, "Fruit Counter", 1);
   lcd_show(0, 1, "by 2black0", 1000);
 }
 
 void loop() {
-  button.loop();
-  if (button.isReleased()) {
-    startStatus = !startStatus;
+  distance1Value = read_ultrasonic(S1trigPin, S1echoPin);
+  Serial.println("Distance1:" + String(distance1Value));
+  if (distance1Value < 25) {
+    converyor_off();
+    distance1Value = 0;
+    totalCounter++;
+    Serial.println("Total:" + String(totalCounter));
+
+    redValue = red_color();
+    greenValue = green_color();
+    blueValue = blue_color();
+    if ((redValue >= redbotSP && redValue <= redbotSP) &&
+        (redValue >= redbotSP && redValue <= redbotSP) &&
+        (redValue >= redbotSP && redValue <= redbotSP)) {
+      ripeCounter++;
+      Serial.println("Ripe Counter:" + String(ripeCounter));
+    } else {
+      Serial.println("unRipe Counter:" + String(totalCounter - ripeCounter));
+      servo1_on();
+    }
   }
 
-  if (startStatus) {
-    converyor_on();
-    on_process();
-    if (onStatus) {
-      converyor_off();
-      color_process();
-      if (colorStatus) {
-        servo1_on();
-      } else {
-        servo1_off();
-      }
-      converyor_on();
-      weight_process();
-      if (weightStatus) {
+  converyor_on();
+  distance2Value = read_ultrasonic(S2trigPin, S2echoPin);
+  Serial.println("Distance2:" + String(distance2Value));
+  if (distance2Value < 25) {
+    distance2Value = 0;
+    weightStatus = true;
+  }
+  if (LoadCell.update())
+    newDataReady = true;
+
+  if (newDataReady && weightStatus) {
+    if (millis() > t + serialPrintInterval) {
+      weightValue = LoadCell.getData();
+      newDataReady = 0;
+      weightStatus = 0;
+      t = millis();
+
+      if (weightValue < 8538676) {
+        smallCounter++;
+        led_on();
         servo2_on();
-      } else {
+        Serial.println("Weight <= 200 gram");
+        Serial.println("S Fruit:" + String(smallCounter));
+        led_off();
+      } else if (weight >= 8538676) {
+        bigCounter++;
+        led_on();
         servo2_off();
+        Serial.println("Weight > 200 gram");
+        Serial.println("B Fruit:" + String(bigCounter));
+        led_off();
       }
     }
-  } else {
-    stop_process();
   }
 
-  delay(1000);
+  lcd_show(1, 0, "T:" + String(totalCounter) + "R:" + String(ripeCounter), 1);
+  lcd_show(0, 1, "S:" + String(smallCounter) + " B:" + String(bigCounter), 100);
 }
 
-void reset_var() {
-  if (!resetStatus) {
-    lcd_show(1, 0, "Clear All Var", 500);
-    totalcounter = 0;
-    ripecounter = 0;
-    smallcounter = 0;
-    bigcounter = 0;
-
-    startStatus = false;
-    onStatus = false;
-    resetStatus = true;
-    weightStatus = false;
-  }
-}
-
-void on_process() {
-  reset_var();
-  distanceValue = read_ultrasonic();
-  if (distanceValue < 30) {
-    onStatus = true;
-    totalcounter++;
-    lcd_show(1, 0, "Counter:" + String(totalcounter), 1000);
-  } else {
-    onStatus = false;
-  }
-}
-
-void color_process() {
+void red_color() {
   digitalWrite(s1Pin, LOW);
   digitalWrite(s2Pin, LOW);
-  redValue = pulseIn(soutPin, LOW);
-  delay(100);
+  int red = pulseIn(soutPin, LOW);
+  delay(150);
+  return red;
+}
 
+void green_color() {
   digitalWrite(s2Pin, HIGH);
   digitalWrite(s3Pin, HIGH);
-  greenValue = pulseIn(soutPin, LOW);
-  delay(100);
+  int green = pulseIn(soutPin, LOW);
+  delay(150);
+  return green;
+}
 
+void blue_color() {
   digitalWrite(s2Pin, LOW);
   digitalWrite(s3Pin, HIGH);
-  blueValue = pulseIn(soutPin, LOW);
-  delay(100);
-
-  if ((redValue >= redbotSP && redValue <= redbotSP) &&
-      (redValue >= redbotSP && redValue <= redbotSP) &&
-      (redValue >= redbotSP && redValue <= redbotSP)) {
-    colorStatus = true;
-    ripecounter++;
-    lcd_show(1, 0, "Ripe OK", 1);
-    lcd_show(0, 1, "Ripe" + String(ripecounter), 500);
-  } else {
-    colorStatus = false;
-    lcd_show(1, 0, "Ripe Not OK", 1);
-    lcd_show(0, 1, "Not Ripe" + String(totalcounter - ripecounter), 500);
-  }
+  int blue = pulseIn(soutPin, LOW);
+  delay(150);
+  return blue;
 }
 
-void weight_process() {
-  weightValue = read_weight();
-  if (weightValue > 10) {
-    converyor_off();
-    weightValue = read_weight();
-    if (weightValue >= 100) {
-      weightStatus = true;
-      bigcounter++;
-      lcd_show(1, 0, "B Fruit:" + String(bigcounter), 1000);
-    } else {
-      weightStatus = false;
-      smallcounter++;
-      lcd_show(1, 0, "S Fruit:" + String(smallcounter), 1000);
-    }
-  }
-}
-
-int read_weight() {
-  scale.set_scale(calibration_factor);
-  return (scale.get_units(), 4);
-}
-
-int read_ultrasonic() {
-  long duration = 0;
-  int distance = 0;
-
-  digitalWrite(trigPin, LOW);
+int read_ultrasonic(int TrigPin, int EchoPin) {
+  Serial.println("Read Distance");
+  long duration;
+  int distance;
+  digitalWrite(TrigPin, LOW);
   delayMicroseconds(2);
-  digitalWrite(trigPin, HIGH);
+  digitalWrite(TrigPin, HIGH);
   delayMicroseconds(10);
-  digitalWrite(trigPin, LOW);
-  duration = pulseIn(echoPin, HIGH);
+  digitalWrite(TrigPin, LOW);
+  duration = pulseIn(EchoPin, HIGH);
   distance = duration * 0.034 / 2;
   return distance;
 }
@@ -241,13 +234,23 @@ void servo2_off() {
 }
 
 void converyor_on() {
-  digitalWrite(conv, LOW);
+  digitalWrite(convPin, LOW);
   delay(100);
 }
 
 void converyor_off() {
-  digitalWrite(conv, HIGH);
+  digitalWrite(convPin, HIGH);
   delay(100);
+}
+
+void led_on() {
+  Serial.println("Led ON");
+  digitalWrite(ledPin, LOW);
+}
+
+void led_off() {
+  Serial.println("Led OFF");
+  digitalWrite(ledPin, HIGH);
 }
 
 void lcd_show(int clear, int lines, String text, int timedelay) {
@@ -256,15 +259,5 @@ void lcd_show(int clear, int lines, String text, int timedelay) {
   }
   lcd.setCursor(0, lines);
   lcd.print(text);
-  Serial.println(text);
   delay(timedelay);
-}
-
-void stop_process() {
-  resetStatus = false;
-  lcd_show(1, 0, "Press Button", 1);
-  lcd_show(0, 1, "to Start", 2000);
-
-  lcd_show(1, 0, "S Fish:" + String(smallcounter), 1);
-  lcd_show(0, 1, "B Fish:" + String(bigcounter), 1000);
 }
