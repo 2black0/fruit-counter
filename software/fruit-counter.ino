@@ -125,9 +125,9 @@ void loop() {
     redValue = red_color();
     greenValue = green_color();
     blueValue = blue_color();
-    if ((redValue >= redbotSP && redValue <= redbotSP) &&
-        (redValue >= redbotSP && redValue <= redbotSP) &&
-        (redValue >= redbotSP && redValue <= redbotSP)) {
+    if ((redValue >= redbotSP && redValue <= redtopSP) &&
+        (greenValue >= greenbotSP && redValue <= greentopSP) &&
+        (blueValue >= bluebotSP && redValue <= bluetopSP)) {
       ripeCounter++;
       Serial.println("Ripe Counter:" + String(ripeCounter));
     } else {
