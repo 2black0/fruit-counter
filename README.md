@@ -15,7 +15,7 @@ An intelligent **fruit classification and counting system** powered by **Arduino
 
 ```
 
-Fruit-Counter/
+Smart-Fruit-Counter/
 ├── hardware 
 │   ├── fruit-counter-circuit_bb.png
 │   └── fruit-counter-circuit.fzz
